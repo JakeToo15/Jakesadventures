@@ -1,0 +1,40 @@
+:root {
+  --color-base: #1c1712;
+  --color-ink: #1f1309;
+  --color-border: #735e43;
+  --color-panel: #f3e7cd;
+  --color-panel-strong: #e6d6b4;
+  --color-accent: #b5892f;
+  --color-accent-2: #7e1822;
+  --color-link: #5b0f16;
+}
+
+.bg-base {
+  background-color: var(--color-base);
+}
+
+.text-ink {
+  color: var(--color-ink);
+}
+
+.text-link {
+  color: var(--color-link);
+}
+
+.btn-accent {
+  border: 1px solid #462f1a;
+  background: linear-gradient(180deg, #d5ae4c 0%, #9f7127 100%);
+  color: #1b1306;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.btn-accent:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+.btn-secondary {
+  border: 1px solid #533a3e;
+  background: linear-gradient(180deg, #92303f 0%, #611520 100%);
+  color: #f6e8d1;
+}

@@ -1,0 +1,224 @@
+@import "tailwindcss";
+@import "../styles/theme.css";
+
+@theme inline {
+  --color-background: var(--color-base);
+  --color-foreground: var(--color-ink);
+  --font-sans: var(--font-libre-caslon);
+}
+
+body {
+  background:
+    radial-gradient(circle at 20% -10%, #5a1f26 0%, transparent 35%),
+    radial-gradient(circle at 85% 0%, #35324a 0%, transparent 30%),
+    var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-libre-caslon), Georgia, serif;
+}
+
+a {
+  transition: color 180ms ease;
+}
+
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: linear-gradient(180deg, rgba(250, 242, 223, 0.98), rgba(242, 230, 205, 0.95));
+  box-shadow: 0 8px 25px rgba(9, 7, 5, 0.24);
+}
+
+.rune-title {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.dice-face {
+  border: 1px solid #5a4227;
+  border-radius: 0.35rem;
+  background: linear-gradient(180deg, #f8edd8, #ebd6ad);
+  min-height: 2.4rem;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 #fff8e9, 0 5px 14px rgba(19, 13, 8, 0.28);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.dnd-die {
+  background-image:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.35), transparent 50%),
+    linear-gradient(180deg, #f2dfba, #d7b274);
+}
+
+.d20-shape {
+  clip-path: polygon(50% 0%, 86% 17%, 100% 52%, 80% 87%, 50% 100%, 20% 87%, 0% 52%, 14% 17%);
+}
+
+.chaos-aura {
+  position: absolute;
+  inset: -30%;
+  background: radial-gradient(circle, rgba(145, 24, 38, 0.22) 0%, rgba(145, 24, 38, 0.03) 45%, transparent 70%);
+  animation: chaosPulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.chaos-card {
+  border-color: rgba(116, 8, 20, 0.45);
+  background: linear-gradient(180deg, rgba(255, 237, 237, 0.84), rgba(255, 221, 221, 0.62));
+  box-shadow: 0 6px 18px rgba(91, 0, 13, 0.22);
+}
+
+@keyframes chaosPulse {
+  0% { transform: scale(0.98); opacity: 0.62; }
+  50% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(0.98); opacity: 0.62; }
+}
+
+.noble-hero {
+  background:
+    linear-gradient(115deg, rgba(251, 245, 232, 0.92), rgba(241, 230, 205, 0.9)),
+    radial-gradient(circle at 85% 12%, rgba(26, 60, 110, 0.2), transparent 40%);
+}
+
+.noble-card {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  border-color: rgba(22, 50, 95, 0.35);
+}
+
+.noble-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 9px 20px rgba(22, 50, 95, 0.16);
+  border-color: rgba(22, 50, 95, 0.52);
+}
+
+.ambient-dust {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(183, 150, 92, 0.9);
+  filter: blur(0.2px);
+}
+
+.hero-light-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(22px);
+  opacity: 0.55;
+  animation: heroLightPulse 7s ease-in-out infinite;
+}
+
+.hero-light-a {
+  width: 240px;
+  height: 240px;
+  top: -60px;
+  left: -40px;
+  background: radial-gradient(circle, rgba(255, 232, 160, 0.45), rgba(255, 232, 160, 0));
+}
+
+.hero-light-b {
+  width: 280px;
+  height: 280px;
+  bottom: -120px;
+  right: -60px;
+  background: radial-gradient(circle, rgba(152, 193, 255, 0.35), rgba(152, 193, 255, 0));
+  animation-delay: 1.4s;
+}
+
+.hero-light-ray {
+  position: absolute;
+  width: 3px;
+  height: 110%;
+  top: -5%;
+  background: linear-gradient(180deg, rgba(255, 244, 206, 0), rgba(255, 244, 206, 0.4), rgba(255, 244, 206, 0));
+  filter: blur(0.3px);
+  opacity: 0.45;
+  transform-origin: center;
+  animation: heroRayFloat 6.8s ease-in-out infinite;
+}
+
+.hero-light-ray-a {
+  left: 18%;
+  --ray-rot: 12deg;
+  transform: rotate(var(--ray-rot));
+}
+
+.hero-light-ray-b {
+  right: 16%;
+  --ray-rot: -10deg;
+  transform: rotate(var(--ray-rot));
+  animation-delay: 1.7s;
+}
+
+.goblin-walker {
+  position: absolute;
+  bottom: 8px;
+  width: 42px;
+  height: 42px;
+  opacity: 0.86;
+  filter: drop-shadow(0 5px 8px rgba(29, 62, 34, 0.35));
+}
+
+@keyframes heroLightPulse {
+  0% { opacity: 0.4; transform: scale(0.94); }
+  50% { opacity: 0.62; transform: scale(1.04); }
+  100% { opacity: 0.4; transform: scale(0.94); }
+}
+
+@keyframes heroRayFloat {
+  0% { opacity: 0.25; transform: translateY(0) rotate(var(--ray-rot, 8deg)); }
+  50% { opacity: 0.52; transform: translateY(-8px) rotate(var(--ray-rot, 8deg)); }
+  100% { opacity: 0.25; transform: translateY(0) rotate(var(--ray-rot, 8deg)); }
+}
+
+.rule-text-compact {
+  white-space: pre-wrap;
+  break-word: break-word;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.rule-text-comfort {
+  white-space: pre-wrap;
+  break-word: break-word;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.die2d-wrap {
+  position: relative;
+  width: 82px;
+  height: 82px;
+  margin: 0 auto;
+  filter: drop-shadow(0 8px 12px rgba(16, 32, 68, 0.2));
+}
+
+.die2d-face {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #fbf3e0, #dfcb9b);
+  border: 1px solid #5d4d2d;
+  border-radius: 0.8rem;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #2a1f09;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.chaos-weak {
+  border-color: rgba(120, 67, 10, 0.35);
+  background: linear-gradient(180deg, rgba(255, 245, 225, 0.92), rgba(245, 228, 193, 0.84));
+}
+
+.chaos-strong {
+  border-color: rgba(120, 25, 44, 0.45);
+  background: linear-gradient(180deg, rgba(255, 232, 232, 0.93), rgba(245, 204, 212, 0.84));
+}
+
+.chaos-cat {
+  border-color: rgba(70, 5, 18, 0.6);
+  background: linear-gradient(180deg, rgba(255, 214, 220, 0.9), rgba(222, 148, 160, 0.86));
+  box-shadow: 0 0 0 1px rgba(70, 5, 18, 0.2), 0 8px 22px rgba(70, 5, 18, 0.35);
+}
