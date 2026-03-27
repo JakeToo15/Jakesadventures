@@ -11,6 +11,7 @@ export type SessionUser = {
 
 export type AccountProfile = {
   username: string;
+  email: string;
   displayName: string;
   avatarUrl: string;
   faction: string;
@@ -19,6 +20,8 @@ export type AccountProfile = {
   tags: string[];
   bio: string;
   favoriteRealm: string;
+  isAdmin: boolean;
+  isApproved: boolean;
 };
 
 export const USERS_KEY = "wh_users_v1";

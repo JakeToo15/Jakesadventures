@@ -9,6 +9,7 @@ import { getSupabaseClient as getSupa } from "@/lib/supabaseClient";
 
 type AccountRow = {
   user_id: string;
+  email: string | null;
   display_name: string | null;
   avatar_url: string | null;
   faction: string | null;
@@ -17,6 +18,8 @@ type AccountRow = {
   tags: string[] | null;
   bio: string | null;
   favorite_realm: string | null;
+  is_admin: boolean | null;
+  is_approved: boolean | null;
 };
 
 type CampaignRow = Partial<Profile> & {
@@ -30,6 +33,7 @@ type CampaignRow = Partial<Profile> & {
 function toAccountRow(profile: AccountRow): AccountProfile {
   return {
     username: profile.user_id,
+    email: profile.email ?? "",
     displayName: profile.display_name ?? "",
     avatarUrl: profile.avatar_url ?? "",
     faction: profile.faction ?? "",
@@ -38,6 +42,8 @@ function toAccountRow(profile: AccountRow): AccountProfile {
     tags: profile.tags ?? [],
     bio: profile.bio ?? "",
     favoriteRealm: profile.favorite_realm ?? "",
+    isAdmin: profile.is_admin ?? false,
+    isApproved: profile.is_approved ?? false,
   };
 }
 
@@ -45,6 +51,7 @@ export function MyProfileClient() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [account, setAccount] = useState<AccountProfile | null>(null);
   const [campaign, setCampaign] = useState<Profile | null>(null);
@@ -124,7 +131,7 @@ export function MyProfileClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const currentTags = useMemo(() => {
     return tagsInput
@@ -132,6 +139,33 @@ export function MyProfileClient() {
       .map((t) => t.trim())
       .filter(Boolean);
   }, [tagsInput]);
+
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [adminCommand, setAdminCommand] = useState("");
+  const [adminCommandError, setAdminCommandError] = useState<string | null>(null);
+
+  async function grantAdminByCommand() {
+    const supabase = getSupa();
+    if (!supabase) return;
+    if (!adminCommand.trim()) return;
+
+    setAdminCommandError(null);
+    setBusy(true);
+    try {
+      const { error: rpcError } = await supabase.rpc("grant_admin_if_code", {
+        p_code: adminCommand.trim(),
+      });
+      if (rpcError) throw rpcError;
+      setAdminModalOpen(false);
+      setAdminCommand("");
+      setAdminCommandError(null);
+      setReloadKey((k) => k + 1);
+    } catch (e: any) {
+      setAdminCommandError(e?.message ?? "Admin command failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function updateAccountField<K extends keyof AccountRow>(key: K, value: AccountRow[K]) {
     if (!account) return;
@@ -413,8 +447,83 @@ export function MyProfileClient() {
               ))}
             </div>
           </div>
+
+          <div className="pt-3">
+            {!account.isAdmin ? (
+              <button
+                type="button"
+                className="btn-secondary rounded px-4 py-2 text-sm"
+                onClick={() => {
+                  setAdminModalOpen(true);
+                  setAdminCommandError(null);
+                  setAdminCommand("");
+                }}
+                disabled={busy}
+              >
+                Admin Command
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-green-900">Admin access granted.</p>
+                <a
+                  href="/admin/users"
+                  className="block text-xs font-semibold text-blue-900 underline underline-offset-2 hover:text-blue-950"
+                >
+                  User Management
+                </a>
+              </div>
+            )}
+          </div>
         </article>
       </section>
+
+      {adminModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded border border-blue-900/25 bg-white p-4 shadow-lg">
+            <div className="flex items-center justify-between gap-3">
+              <p className="rune-title text-sm text-blue-900">Administrator Console</p>
+              <button
+                type="button"
+                className="rounded border px-2 py-1 text-xs"
+                onClick={() => setAdminModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <p className="mt-2 text-xs opacity-80">
+              Enter the admin code. Example: <span className="font-semibold">Over9000</span>
+            </p>
+            <div className="mt-3 rounded border bg-neutral-950 p-3 text-sm text-neutral-100">
+              <label className="block text-xs opacity-80">Command</label>
+              <input
+                className="mt-1 w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm"
+                value={adminCommand}
+                onChange={(e) => setAdminCommand(e.target.value)}
+                placeholder="Over9000"
+              />
+            </div>
+            {adminCommandError && <p className="mt-2 text-xs text-red-700">{adminCommandError}</p>}
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="btn-accent rounded px-4 py-2 text-sm flex-1"
+                onClick={grantAdminByCommand}
+                disabled={busy}
+              >
+                Run
+              </button>
+              <button
+                type="button"
+                className="rounded border px-4 py-2 text-sm flex-1"
+                onClick={() => setAdminModalOpen(false)}
+                disabled={busy}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
