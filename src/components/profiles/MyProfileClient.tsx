@@ -1,139 +1,272 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useMemo, useState } from "react";
-import type { AccountProfile, SessionUser } from "@/lib/auth";
-import { ACCOUNT_PROFILES_KEY, SESSION_KEY } from "@/lib/auth";
-import { aosCareers, aosFactions, aosRaces, defaultPermissionsForRoles, normalizeProfile, PROFILES_KEY } from "@/lib/campaign";
+import { useEffect, useMemo, useState } from "react";
+import type { AccountProfile } from "@/lib/auth";
 import type { Profile, Role } from "@/lib/campaign";
+import { aosCareers, aosRaces, defaultPermissionsForRoles, normalizeProfile } from "@/lib/campaign";
+import { getSupabaseClient as getSupa } from "@/lib/supabaseClient";
+
+type AccountRow = {
+  user_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  faction: string | null;
+  subfaction: string | null;
+  homeland: string | null;
+  tags: string[] | null;
+  bio: string | null;
+  favorite_realm: string | null;
+};
+
+type CampaignRow = Partial<Profile> & {
+  id?: string;
+  display_name?: string | null;
+  sheet_url?: string | null;
+  created_at?: string | null;
+  owner_user_id?: string;
+};
+
+function toAccountRow(profile: AccountRow): AccountProfile {
+  return {
+    username: profile.user_id,
+    displayName: profile.display_name ?? "",
+    avatarUrl: profile.avatar_url ?? "",
+    faction: profile.faction ?? "",
+    subfaction: profile.subfaction ?? "",
+    homeland: profile.homeland ?? "",
+    tags: profile.tags ?? [],
+    bio: profile.bio ?? "",
+    favoriteRealm: profile.favorite_realm ?? "",
+  };
+}
 
 export function MyProfileClient() {
-  const [session] = useState<SessionUser | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw) as SessionUser;
-    } catch {
-      return null;
-    }
-  });
-  const [profiles, setProfiles] = useState<AccountProfile[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(localStorage.getItem(ACCOUNT_PROFILES_KEY) ?? "[]") as AccountProfile[];
-    } catch {
-      return [];
-    }
-  });
-  const [campaignProfiles, setCampaignProfiles] = useState<Profile[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = localStorage.getItem(PROFILES_KEY);
-      if (!raw) return [];
-      return (JSON.parse(raw) as Array<Partial<Profile>>).map((entry) => normalizeProfile(entry));
-    } catch {
-      return [];
-    }
-  });
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const current = useMemo(() => {
-    if (!session) return null;
-    return (
-      profiles.find((profile) => profile.username === session.username) ?? {
-        username: session.username,
-        displayName: session.username,
-        avatarUrl: "",
-        faction: "",
-        subfaction: "",
-        homeland: "",
-        tags: [],
-        bio: "",
-        favoriteRealm: "",
+  const [account, setAccount] = useState<AccountProfile | null>(null);
+  const [campaign, setCampaign] = useState<Profile | null>(null);
+
+  const [tagsInput, setTagsInput] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      const supabase = getSupa();
+      if (!supabase) {
+        setError("Supabase not configured (set NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).");
+        setLoading(false);
+        return;
       }
-    );
-  }, [profiles, session]);
-  const currentCampaignProfile = useMemo(() => {
-    if (!session) return null;
-    const byUser = campaignProfiles.find((profile) => profile.username === session.username);
-    if (byUser) return byUser;
-    return campaignProfiles.find((profile) => profile.displayName === current?.displayName) ?? null;
-  }, [campaignProfiles, current?.displayName, session]);
 
-  const [tagsInput, setTagsInput] = useState(current?.tags.join(", ") ?? "");
-  if (!session || !current) return null;
-  const currentUsername = session.username;
+      setLoading(true);
+      setError(null);
 
-  function persist(next: AccountProfile[]) {
-    setProfiles(next);
-    localStorage.setItem(ACCOUNT_PROFILES_KEY, JSON.stringify(next));
-  }
-  function persistCampaign(next: Profile[]) {
-    setCampaignProfiles(next);
-    localStorage.setItem(PROFILES_KEY, JSON.stringify(next));
-  }
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+      if (!user) {
+        if (!cancelled) setError("Not signed in.");
+        setLoading(false);
+        return;
+      }
 
-  function updateField<K extends keyof AccountProfile>(key: K, value: AccountProfile[K]) {
-    const updated = { ...current, [key]: value } as AccountProfile;
-    const other = profiles.filter((profile) => profile.username !== currentUsername);
-    persist([updated, ...other]);
-  }
+      const { data: accData, error: accError } = await supabase
+        .from("account_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle<AccountRow>();
 
-  function saveTags() {
-    const tags = tagsInput.split(",").map((item) => item.trim()).filter(Boolean);
-    updateField("tags", tags);
-    if (currentCampaignProfile) {
-      const next = campaignProfiles.map((profile) =>
-        profile.id === currentCampaignProfile.id ? { ...profile, tags } : profile,
-      );
-      persistCampaign(next);
+      if (accError) {
+        if (!cancelled) setError(accError.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!accData) {
+        if (!cancelled) setError("Account profile missing. Register again or check RLS/SQL.");
+        setLoading(false);
+        return;
+      }
+
+      const mappedAccount = toAccountRow(accData);
+
+      const { data: campaignData, error: campError } = await supabase
+        .from("campaign_profiles")
+        .select("*")
+        .eq("owner_user_id", user.id)
+        .maybeSingle<CampaignRow>();
+
+      if (campError) {
+        if (!cancelled) setError(campError.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!campaignData) {
+        if (!cancelled) setError("Campaign profile missing. Register again or check RLS/SQL.");
+        setLoading(false);
+        return;
+      }
+
+      const normalized = normalizeProfile(campaignData as any);
+
+      if (cancelled) return;
+      setAccount(mappedAccount);
+      setCampaign(normalized);
+      setTagsInput((mappedAccount.tags ?? []).join(", "));
+      setLoading(false);
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const currentTags = useMemo(() => {
+    return tagsInput
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }, [tagsInput]);
+
+  async function updateAccountField<K extends keyof AccountRow>(key: K, value: AccountRow[K]) {
+    if (!account) return;
+    const supabase = getSupa();
+    if (!supabase) return;
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+    if (!user) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const dbKeyMap: Record<string, keyof AccountRow> = {
+        display_name: "display_name",
+        avatar_url: "avatar_url",
+        faction: "faction",
+        subfaction: "subfaction",
+        homeland: "homeland",
+        tags: "tags",
+        bio: "bio",
+        favorite_realm: "favorite_realm",
+      };
+      const actualKey = dbKeyMap[String(key)] ?? key;
+
+      const { error: updError } = await supabase.from("account_profiles").update({ [actualKey]: value }).eq("user_id", user.id);
+      if (updError) throw updError;
+
+      // optimistic local update
+      setAccount((prev) => {
+        if (!prev) return prev;
+        const next: AccountProfile = { ...prev, [String(actualKey) as any]: value } as any;
+        // fix camelCase mapping
+        return {
+          ...prev,
+          displayName: actualKey === "display_name" ? (value as any) ?? "" : prev.displayName,
+          avatarUrl: actualKey === "avatar_url" ? (value as any) ?? "" : prev.avatarUrl,
+          faction: actualKey === "faction" ? (value as any) ?? "" : prev.faction,
+          subfaction: actualKey === "subfaction" ? (value as any) ?? "" : prev.subfaction,
+          homeland: actualKey === "homeland" ? (value as any) ?? "" : prev.homeland,
+          tags: actualKey === "tags" ? ((value as any) ?? []) : prev.tags,
+          bio: actualKey === "bio" ? (value as any) ?? "" : prev.bio,
+          favoriteRealm: actualKey === "favorite_realm" ? (value as any) ?? "" : prev.favoriteRealm,
+        };
+      });
+    } catch (e: any) {
+      setError(e?.message ?? "Update failed.");
+    } finally {
+      setBusy(false);
     }
   }
 
-  function updateCampaignField<K extends keyof Profile>(key: K, value: Profile[K]) {
-    if (!currentCampaignProfile) return;
-    const next = campaignProfiles.map((profile) =>
-      profile.id === currentCampaignProfile.id ? { ...profile, [key]: value } : profile,
-    );
-    persistCampaign(next);
+  async function saveTags() {
+    const supabase = getSupa();
+    if (!supabase || !account) return;
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+    if (!user) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const { error: updError } = await supabase
+        .from("account_profiles")
+        .update({ tags: currentTags })
+        .eq("user_id", user.id);
+      if (updError) throw updError;
+      setAccount((prev) => (prev ? { ...prev, tags: currentTags } : prev));
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to save tags.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function toggleRole(role: Role) {
-    if (!currentCampaignProfile) return;
-    const has = currentCampaignProfile.roles.includes(role);
-    const roles: Role[] = has
-      ? currentCampaignProfile.roles.filter((entry) => entry !== role)
-      : [...currentCampaignProfile.roles, role];
-    const normalized: Role[] = roles.length ? roles : ["player"];
-    const permissions = defaultPermissionsForRoles(normalized);
-    const next = campaignProfiles.map((profile) =>
-      profile.id === currentCampaignProfile.id ? { ...profile, roles: normalized, permissions } : profile,
-    );
-    persistCampaign(next);
+  async function updateCampaignField<K extends keyof CampaignRow>(key: K, value: CampaignRow[K]) {
+    if (!campaign) return;
+    const supabase = getSupa();
+    if (!supabase) return;
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+    if (!user) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const { error: updError } = await supabase
+        .from("campaign_profiles")
+        .update({ [key as string]: value } as any)
+        .eq("owner_user_id", user.id);
+      if (updError) throw updError;
+
+      // refetch minimal fields could be expensive; optimistic update:
+      setCampaign((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev } as any;
+        if (key === "display_name") next.displayName = value ?? "";
+        if (key === "race") next.race = value ?? "";
+        if (key === "career") next.career = value ?? "";
+        if (key === "title") next.title = value ?? "";
+        if (key === "sheet_url") next.sheetUrl = value ?? "";
+        if (key === "faction") next.faction = value ?? "";
+        if (key === "tags") next.tags = value ?? [];
+        return next as Profile;
+      });
+    } catch (e: any) {
+      setError(e?.message ?? "Campaign update failed.");
+    } finally {
+      setBusy(false);
+    }
   }
+
+  if (loading) return <div className="min-h-[40vh]" />;
+  if (!account || !campaign) return <div className="panel p-5">Profile not available.</div>;
 
   return (
     <div className="space-y-6">
       <section className="panel noble-hero p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="h-24 w-24 overflow-hidden rounded-full border-2 border-blue-900/30 bg-white/70">
-            {current.avatarUrl ? (
+            {account.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={current.avatarUrl} alt="avatar preview" className="h-full w-full object-cover" />
+              <img src={account.avatarUrl} alt="avatar preview" className="h-full w-full object-cover" />
             ) : (
               <div className="grid h-full w-full place-items-center text-2xl font-bold text-blue-900">
-                {(current.displayName || session.username).slice(0, 1).toUpperCase()}
+                {(account.displayName || account.username).slice(0, 1).toUpperCase()}
               </div>
             )}
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-blue-900">My Account</p>
-            <h2 className="text-2xl font-bold text-blue-950">{current.displayName || session.username}</h2>
-            <p className="text-sm opacity-80">@{session.username}</p>
-            {currentCampaignProfile && (
-              <p className="mt-1 text-xs">
-                {currentCampaignProfile.race} - {currentCampaignProfile.career} | {currentCampaignProfile.title || "No title"}
-              </p>
-            )}
+            <h1 className="text-2xl font-bold text-blue-950">{account.displayName || account.username}</h1>
+            <p className="text-sm opacity-80">@{campaign.username || account.username}</p>
+            <p className="mt-1 text-xs">
+              {campaign.race} - {campaign.career} | {campaign.title || "No title"}
+            </p>
           </div>
         </div>
       </section>
@@ -141,52 +274,148 @@ export function MyProfileClient() {
       <section className="grid gap-4 lg:grid-cols-2">
         <article className="panel p-5 space-y-3">
           <h3 className="rune-title text-xs text-blue-900">Identity</h3>
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Display Name" value={current.displayName} onChange={(e) => updateField("displayName", e.target.value)} />
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Avatar URL (image link)" value={current.avatarUrl} onChange={(e) => updateField("avatarUrl", e.target.value)} />
-          <textarea className="w-full rounded border px-3 py-2 text-sm" placeholder="Character / player bio" value={current.bio} onChange={(e) => updateField("bio", e.target.value)} />
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Homeland / Stronghold" value={current.homeland} onChange={(e) => updateField("homeland", e.target.value)} />
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Favorite Mortal Realm (Aqshy, Ghyran, etc.)" value={current.favoriteRealm} onChange={(e) => updateField("favoriteRealm", e.target.value)} />
+          {error && <p className="text-xs text-red-700">{error}</p>}
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Display Name"
+            value={account.displayName}
+            onChange={(e) => setAccount((prev) => (prev ? { ...prev, displayName: e.target.value } : prev))}
+            onBlur={(e) => updateAccountField("display_name", e.target.value)}
+          />
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Avatar URL (image link)"
+            value={account.avatarUrl}
+            onChange={(e) => setAccount((prev) => (prev ? { ...prev, avatarUrl: e.target.value } : prev))}
+            onBlur={(e) => updateAccountField("avatar_url", e.target.value)}
+          />
+          <textarea
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Bio"
+            value={account.bio}
+            onChange={(e) => setAccount((prev) => (prev ? { ...prev, bio: e.target.value } : prev))}
+            onBlur={(e) => updateAccountField("bio", e.target.value)}
+          />
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Homeland / Stronghold"
+            value={account.homeland}
+            onChange={(e) => setAccount((prev) => (prev ? { ...prev, homeland: e.target.value } : prev))}
+            onBlur={(e) => updateAccountField("homeland", e.target.value)}
+          />
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Favorite Realm"
+            value={account.favoriteRealm}
+            onChange={(e) => setAccount((prev) => (prev ? { ...prev, favoriteRealm: e.target.value } : prev))}
+            onBlur={(e) => updateAccountField("favorite_realm", e.target.value)}
+          />
+
+          <div className="space-y-2">
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              placeholder="Tags (comma separated)"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+            />
+            <button type="button" onClick={saveTags} disabled={busy} className="rounded border px-3 py-1 text-xs">
+              {busy ? "Saving..." : "Save Tags"}
+            </button>
+          </div>
         </article>
 
         <article className="panel p-5 space-y-3">
           <h3 className="rune-title text-xs text-blue-900">Warhammer Profile</h3>
-          <select className="w-full rounded border px-3 py-2 text-sm" value={current.faction} onChange={(e) => updateField("faction", e.target.value)}>
-            <option value="">Select Faction</option>
-            {aosFactions.map((faction) => <option key={faction} value={faction}>{faction}</option>)}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              placeholder="Name"
+              value={campaign.displayName}
+              onChange={(e) => setCampaign((prev) => (prev ? { ...prev, displayName: e.target.value } : prev))}
+              onBlur={(e) => updateCampaignField("display_name", e.target.value)}
+            />
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              placeholder="Title"
+              value={campaign.title}
+              onChange={(e) => setCampaign((prev) => (prev ? { ...prev, title: e.target.value } : prev))}
+              onBlur={(e) => updateCampaignField("title", e.target.value)}
+            />
+          </div>
+
+          <select
+            className="w-full rounded border px-3 py-2 text-sm"
+            value={campaign.race}
+            onChange={(e) => updateCampaignField("race", e.target.value)}
+          >
+            <option value="">Select Race</option>
+            {aosRaces.map((race) => (
+              <option key={race} value={race}>
+                {race}
+              </option>
+            ))}
           </select>
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Subfaction / Warband" value={current.subfaction} onChange={(e) => updateField("subfaction", e.target.value)} />
-          {currentCampaignProfile && (
-            <>
-              <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Name" value={currentCampaignProfile.displayName} onChange={(e) => updateCampaignField("displayName", e.target.value)} />
-              <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Title" value={currentCampaignProfile.title} onChange={(e) => updateCampaignField("title", e.target.value)} />
-              <select className="w-full rounded border px-3 py-2 text-sm" value={currentCampaignProfile.race} onChange={(e) => updateCampaignField("race", e.target.value)}>
-                <option value="">Select Race</option>
-                {aosRaces.map((race) => <option key={race} value={race}>{race}</option>)}
-              </select>
-              <input className="w-full rounded border px-3 py-2 text-sm" list="me-careers" placeholder="Career (searchable)" value={currentCampaignProfile.career} onChange={(e) => updateCampaignField("career", e.target.value)} />
-              <datalist id="me-careers">
-                {aosCareers.map((career) => <option key={career} value={career} />)}
-              </datalist>
-              <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Character Sheet URL" value={currentCampaignProfile.sheetUrl} onChange={(e) => updateCampaignField("sheetUrl", e.target.value)} />
-              <div className="rounded border bg-white/70 p-3">
-                <p className="text-xs font-semibold text-blue-900">Roles</p>
-                <div className="mt-2 flex gap-3 text-xs">
-                  {(["player", "gamemaster"] as Role[]).map((role) => (
-                    <label key={role} className="inline-flex items-center gap-2">
-                      <input type="checkbox" checked={currentCampaignProfile.roles.includes(role)} onChange={() => toggleRole(role)} />
-                      {role}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            list="me-careers"
+            placeholder="Career (searchable)"
+            value={campaign.career}
+            onChange={(e) => setCampaign((prev) => (prev ? { ...prev, career: e.target.value } : prev))}
+            onBlur={(e) => updateCampaignField("career", e.target.value)}
+          />
+          <datalist id="me-careers">
+            {aosCareers.map((career) => (
+              <option key={career} value={career} />
+            ))}
+          </datalist>
+
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Character Sheet URL"
+            value={campaign.sheetUrl}
+            onChange={(e) => setCampaign((prev) => (prev ? { ...prev, sheetUrl: e.target.value } : prev))}
+            onBlur={(e) => updateCampaignField("sheet_url", e.target.value)}
+          />
+
           <div className="space-y-2">
-            <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Tags (comma separated)" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} />
-            <button type="button" onClick={saveTags} className="rounded border px-3 py-1 text-xs">Save Tags</button>
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              placeholder="Faction"
+              value={campaign.faction ?? ""}
+              onChange={(e) => setCampaign((prev) => (prev ? { ...prev, faction: e.target.value } : prev))}
+              onBlur={(e) => updateCampaignField("faction", e.target.value)}
+            />
+          </div>
+
+          <div className="rounded border bg-white/60 p-3">
+            <p className="text-xs font-semibold text-blue-900">Roles</p>
+            <div className="mt-2 flex gap-3 text-xs">
+              {(["player", "gamemaster"] as Role[]).map((role) => (
+                <label key={role} className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={campaign.roles.includes(role)}
+                    onChange={() => {
+                      const has = campaign.roles.includes(role);
+                      const nextRoles: Role[] = has
+                        ? campaign.roles.filter((r) => r !== role)
+                        : [...campaign.roles, role];
+                      const normalized: Role[] = nextRoles.length ? nextRoles : ["player"];
+                      const perms = defaultPermissionsForRoles(normalized);
+                      updateCampaignField("roles", normalized);
+                      updateCampaignField("permissions", perms as any);
+                    }}
+                  />
+                  {role}
+                </label>
+              ))}
+            </div>
           </div>
         </article>
       </section>
     </div>
   );
 }
+

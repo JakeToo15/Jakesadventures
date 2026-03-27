@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import type { SessionUser } from "@/lib/auth";
-import { SESSION_KEY } from "@/lib/auth";
+import { useEffect, useState } from "react";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 const links = [
   { href: "/", label: "Start" },
@@ -16,20 +15,35 @@ const links = [
 ];
 
 export function MainNav() {
-  const [session] = useState<SessionUser | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw) as SessionUser;
-    } catch {
-      return null;
-    }
-  });
+  const [authUser, setAuthUser] = useState<{ id: string; email?: string | null } | null>(null);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      setAuthUser(data.user ?? null);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
+      setAuthUser(session?.user ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const username = authUser?.email?.split("@")?.[0] ?? null;
 
   function logout() {
-    localStorage.removeItem(SESSION_KEY);
-    window.location.reload();
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    supabase.auth.signOut().catch(() => window.location.reload());
   }
 
   return (
@@ -48,13 +62,13 @@ export function MainNav() {
               {link.label}
             </Link>
           ))}
-          {session && (
+          {authUser && (
             <button
               type="button"
               onClick={logout}
               className="rounded border border-amber-300/40 px-2 py-1 text-xs text-amber-100/90 hover:text-amber-300"
             >
-              Logout ({session.username})
+              Logout ({username ?? "user"})
             </button>
           )}
         </nav>

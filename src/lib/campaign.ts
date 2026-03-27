@@ -241,6 +241,7 @@ export function defaultPermissionsForRoles(roles: Role[]): Permission[] {
 
 export function normalizeProfile(input: UnknownProfile): Profile {
   const legacyRole = input.role;
+  const asAny = input as Record<string, unknown>;
   const roles =
     input.roles && input.roles.length
       ? input.roles
@@ -249,8 +250,8 @@ export function normalizeProfile(input: UnknownProfile): Profile {
         : (["player"] as Role[]);
   return {
     id: input.id ?? "legacy-profile",
-    username: (input as { username?: string }).username ?? "",
-    displayName: input.displayName ?? "Unknown",
+    username: (asAny.username ?? "") as string,
+    displayName: ((asAny.displayName ?? asAny.display_name ?? "Unknown") as string),
     race: input.race ?? "",
     career: input.career ?? "",
     title: input.title ?? "",
@@ -260,10 +261,10 @@ export function normalizeProfile(input: UnknownProfile): Profile {
       input.permissions && input.permissions.length
         ? input.permissions
         : defaultPermissionsForRoles(roles),
-    sheetUrl: input.sheetUrl ?? "",
+    sheetUrl: ((asAny.sheetUrl ?? asAny.sheet_url ?? "") as string),
     faction: input.faction ?? "",
     tags: input.tags ?? [],
-    createdAt: input.createdAt ?? 0,
+    createdAt: ((asAny.createdAt ?? asAny.created_at ?? 0) as number),
   };
 }
 
